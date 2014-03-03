@@ -13,6 +13,37 @@
 
 using namespace boost;
 
+template <class Graph>
+struct exercise_vertex
+{
+    typedef typename graph_traits<Graph>
+      ::vertex_descriptor Vertex;
+
+    exercise_vertex(Graph& g_) : g(g_) {}
+
+    void operator()(const Vertex& v) const
+    {
+        typedef graph_traits<Graph> GraphTraits;
+        typename property_map<Graph, vertex_index_t>::type
+          index = get(vertex_index, g);
+
+        std::cout << "out-edges: ";
+        typename GraphTraits::out_edge_iterator out_i, out_end;
+        typename GraphTraits::edge_descriptor e;
+        for (tie(out_i, out_end) = out_edges(v, g);
+             out_i != out_end; ++out_i) {
+          e = *out_i;
+          Vertex src = source(e, g), targ = target(e, g);
+          std::cout << "(" << index[src] << ","
+                    << index[targ] << ") ";
+        }
+        std::cout << std::endl;
+    }
+
+    Graph& g;
+};
+
+
 int main(int,char*[])
 {
     // create a typedef for the Graph type
@@ -48,6 +79,16 @@ int main(int,char*[])
       std::cout << index[*vp.first] <<  " ";
     std::cout << std::endl;
 
+    // accessing the edge set.
+    std::cout << "edges(g) = ";
+    graph_traits<Graph>::edge_iterator ei, ei_end;
+    for (tie(ei, ei_end) = edges(g); ei != ei_end; ++ei)
+        std::cout << "(" << index[source(*ei, g)]
+                  << "," << index[target(*ei, g)] << ") ";
+    std::cout << std::endl;
+
+    std::for_each(vertices(g).first, vertices(g).second,
+                  exercise_vertex<Graph>(g));
 
     return 0;
 }
