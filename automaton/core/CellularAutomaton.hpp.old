@@ -1,0 +1,43 @@
+/*
+ * CellularAutomaton.hpp
+ *
+ *  Created on: 4 mars 2014
+ *      Author: nemikolh
+ */
+
+#ifndef CELLULARAUTOMATON_HPP_
+#define CELLULARAUTOMATON_HPP_
+
+#include <boost/graph/graph_traits.hpp>
+#include <boost/graph/adjacency_list.hpp>
+
+namespace nkh {
+
+class CellularAutomaton
+{
+public:
+
+    struct Cell
+    {
+
+    };
+
+    typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::undirectedS, Cell> Graph;
+    typedef boost::graph_traits<Graph> GraphTraits;
+
+    typedef typename boost::property_map<Graph, boost::vertex_index_t>::type IndexMap;
+
+    typedef std::pair<int, int> Edge;
+
+    typedef GraphTraits::vertex_iterator VertexIter;
+
+    // ================================================================ //
+    // =========================== CTOR/DTOR ========================== //
+    // ================================================================ //
+
+    CellularAutomaton();
+};
+
+} /* namespace nkh */
+
+#endif /* CELLULARAUTOMATON_HPP_ */
