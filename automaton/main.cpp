@@ -1,17 +1,13 @@
-/*
- * main.cpp
- *
- *  Created on: 3 mars 2014
- *      Author: nemikolh
- */
-
+#include "qt/MainWindow.h"
 #include "core/CellularAutomaton.hpp"
+#include <QApplication>
 
-int main()
+int main(int argc, char *argv[])
 {
-    nkh::CellularAutomaton automate;
-
-    automate.test();
-
-    return 0;
+    QApplication a(argc, argv);
+    nkh::MainWindow w;
+    w.setMainQmlFile(QStringLiteral("qrc:/view.qml"));
+    w.showExpanded();
+    
+    return a.exec();
 }

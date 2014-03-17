@@ -17,9 +17,15 @@
 #include <luabind/luabind.hpp>
 #include <luabind/std_shared_ptr_converter.hpp>
 #include <luabind/iterator_policy.hpp>
+#include <luabind/operator.hpp>
 
 
 namespace nkh {
+
+bool operator==(const nkh::CellularAutomaton::CellColor& p_lhs, const nkh::CellularAutomaton::CellColor& p_rhs)
+{
+    return p_lhs.r == p_rhs.r && p_lhs.g == p_rhs.g && p_lhs.b == p_rhs.b;
+}
 
 namespace priv {
 
@@ -49,28 +55,12 @@ static void dostring(lua_State* state, char const* str)
     lua_pop(state, 1);
 }
 
-struct CellColor
-{
-    CellColor()
-        : r(0)
-        , g(0)
-        , b(0)
-    {}
-
-    float r;
-    float g;
-    float b;
-};
-
 struct Cell : std::enable_shared_from_this<Cell>
 {
     Cell()
-        : m_name("Cell n° ")
-        , m_state()
+        : m_state()
         , m_neighbors()
-    {
-        m_name += std::to_string(++test);
-    }
+    {}
 
     void add_neighbor(const std::shared_ptr<Cell>& p_other)
     {
@@ -82,14 +72,10 @@ struct Cell : std::enable_shared_from_this<Cell>
         m_neighbors.clear();
     }
 
-    std::string         m_name;
-    CellColor           m_state;
-    CellColor           m_old_state;
+    nkh::CellularAutomaton::CellColor           m_state;
+    nkh::CellularAutomaton::CellColor           m_old_state;
     std::vector<std::shared_ptr<Cell>> m_neighbors;
-    static int test;
 };
-
-int Cell::test = 0;
 
 struct CellularAutomaton
 {
@@ -108,6 +94,7 @@ struct CellularAutomaton
 
     ~CellularAutomaton()
     {
+        this->clean_neighbors();
         lua_close(m_lua_state);
     }
 
@@ -118,16 +105,19 @@ struct CellularAutomaton
         using namespace luabind;
         open(m_lua_state);
 
+        typedef nkh::CellularAutomaton::CellColor CellColor;
+
         module(m_lua_state)
         [
-             class_<CellColor>("Color")
-                 .def(constructor<>())
+             class_<CellColor>("State")
+                 .def(constructor<int>())
+                 .def(constructor<int, int, int>())
+                 .def(const_self == other<const CellColor&>())
                  .def_readwrite("r", &CellColor::r)
                  .def_readwrite("g", &CellColor::g)
                  .def_readwrite("b", &CellColor::b),
              class_<Cell, std::shared_ptr<Cell>>("Cell")
                  .def(constructor<>())
-                 .def_readonly("name", &Cell::m_name)
                  .def_readwrite("state", &Cell::m_state)
                  .def_readwrite("old_state", &Cell::m_old_state)
                  .def_readwrite("neighbors", &Cell::m_neighbors, return_stl_iterator)
@@ -159,7 +149,56 @@ struct CellularAutomaton
         dostring(m_lua_state, p_src);
     }
 
-    void set_grid(unsigned int p_height, unsigned int p_width)
+    void run_next_step()
+    {
+        try
+        {
+            apply([this](int i, int j) {
+                cell(i, j)->m_old_state = cell(i, j)->m_state;
+            });
+            apply([this](int i, int j) {
+                luabind::call_function<void>(m_lua_state, "next_state", cell(i, j));
+            });
+        }
+        catch(const luabind::error& p_err)
+        {
+            std::string err(lua_tostring(m_lua_state, -1));
+            err += p_err.what();
+            throw err;
+        }
+    }
+
+    void call_init_cell()
+    {
+        try
+        {
+            apply([this](int i, int j) {
+                luabind::call_function<void>(m_lua_state, "init_cell", cell(i, j));
+            });
+        }
+        catch(const luabind::error& p_err)
+        {
+            std::string err(lua_tostring(m_lua_state, -1));
+            err += p_err.what();
+            throw err;
+        }
+    }
+
+    void call_set_cell(int p_row, int p_column)
+    {
+        try
+        {
+            luabind::call_function<void>(m_lua_state, "set_cell", cell(p_row, p_column));
+        }
+        catch(const luabind::error& p_err)
+        {
+            std::string err(lua_tostring(m_lua_state, -1));
+            err += p_err.what();
+            throw err;
+        }
+    }
+
+    void set_grid(int p_height, int p_width)
     {
         m_height = p_height;
         m_width = p_width;
@@ -170,6 +209,8 @@ struct CellularAutomaton
         apply([this](int, int) {
             m_cells.emplace_back(std::make_shared<Cell>());
         });
+
+        assert(m_cells.size() == static_cast<unsigned int>(p_height) * static_cast<unsigned int>(p_width));
     }
 
     /**
@@ -183,7 +224,7 @@ struct CellularAutomaton
             for(int k = i - p_order; k <= i + p_order; ++k)
                 for(int l = j - p_order; l <= j + p_order; ++l)
                 {
-                    if(is_index_valid(k, l) && (k != i) && (l != j))
+                    if(is_index_valid(k, l) && (k != i || l != j))
                         cell(i, j)->add_neighbor(cell(k,l));
                 }
         });
@@ -207,6 +248,26 @@ struct CellularAutomaton
         });
     }
 
+    int width() const
+    {
+        return m_width;
+    }
+
+    int height() const
+    {
+        return m_height;
+    }
+
+    std::shared_ptr<Cell> & cell(int i, int j)
+    {
+        return m_cells[i * m_width +  j];
+    }
+
+    const std::shared_ptr<Cell> & cell(int i, int j) const
+    {
+        return m_cells[i * m_width + j];
+    }
+
 private:
 
     // ================================================================ //
@@ -225,17 +286,7 @@ private:
 
     bool is_index_valid(int i, int j)
     {
-        return (i > 0) && (j > 0) && (i < m_height - 1) && (j < m_width - 1);
-    }
-
-    std::shared_ptr<Cell> & cell(int i, int j)
-    {
-        return m_cells[i * m_width +  j];
-    }
-
-    const std::shared_ptr<Cell> & cells(int i, int j) const
-    {
-        return m_cells[i * m_width + j];
+        return (i >= 0) && (j >= 0) && (i < m_height) && (j < m_width);
     }
 
     // ================================================================ //
@@ -271,10 +322,42 @@ void CellularAutomaton::load_lua(const char* p_src)
     m_impl->load_lua(p_src);
 }
 
-void CellularAutomaton::set_grid(unsigned int p_height, unsigned int p_width)
+void CellularAutomaton::call_init_cell()
+{
+    m_impl->call_init_cell();
+}
+
+void CellularAutomaton::call_set_cell(int p_row, int p_column)
+{
+    m_impl->call_set_cell(p_row, p_column);
+}
+
+void CellularAutomaton::run_next_step()
+{
+    m_impl->run_next_step();
+}
+
+void CellularAutomaton::set_grid(int p_height, int p_width)
 {
     m_impl->set_grid(p_height, p_width);
-    m_impl->set_von_neumann_neighborhood();
+    m_impl->set_moore_neighborhood(1);
+}
+
+int CellularAutomaton::width() const
+{
+    return m_impl->width();
+}
+
+int CellularAutomaton::height() const
+{
+    return m_impl->height();
+}
+
+CellularAutomaton::CellColor CellularAutomaton::state(int p_row, int p_column) const
+{
+    assert(p_row >= 0 && p_row < m_impl->height() &&
+           p_column >= 0 && p_column < m_impl->width());
+    return m_impl->cell(p_row, p_column)->m_state;
 }
 
 } /* namespace nkh */
