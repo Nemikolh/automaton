@@ -13,7 +13,7 @@ Install
 You need the following library in order to compile this project:
  * Qt 5.2.1 compiled with xcb support
  * Lua 5.2
- * [https://github.com/Oberon00/luabind](luabind)
+ * [luabind](https://github.com/Oberon00/luabind)
 
 
 Usage
